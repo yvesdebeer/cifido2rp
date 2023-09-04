@@ -37,7 +37,6 @@
 			updateMsgRaw(htmlEncode(msg));
 		}
 
-
 		function clearMsg() {
 			hideDiv("detailsDiv");
 			document.getElementById("detailsMsgDiv").innerHTML = "";
@@ -70,15 +69,49 @@
 			return JSON.stringify(o, myJSONReplacer, 2).replace(/\"BEGIN_ARRAY\[/g, "[").replace(/\]END_ARRAY\"/g, "]");
 		}
 
-		function doLogin() {
+		function sendotp() {
 			clearMsg();
-			var username = document.getElementById("username").value;
-			var password = document.getElementById("password").value;
-			if (username != null && username.length > 0 && password != null && password.length > 0) {
+			var email = document.getElementById("email").value;
+			if (email != null && email.length > 0) {
 				$.ajax({
 					type: "POST",
-					url: baseURL + '/login',
-					data: JSON.stringify({"username": username, "password": password}),
+					url: baseURL + '/sendotp',
+					data: JSON.stringify({"username": email}),
+					beforeSend: (request) => {
+    					request.setRequestHeader("Content-type", "application/json");
+    					request.setRequestHeader("Accept", "application/json");
+  					}
+				}).done((data, textStatus, jqXHR) => {
+					var rspStatus = jqXHR.status;
+					if (rspStatus == 200) {
+						otpData = data;
+						console.log("otpData = ", otpData);
+						if (otpData.id) {
+							document.getElementById("trxnid").textContent = otpData.id;
+							document.getElementById("otp-correlation").textContent = otpData.correlation;
+							showDiv("otp-correlation");
+						} else {
+							updateMsg(data.errorMessage ? data.errorMessage : "Unable to login");
+						}
+					} else {
+						updateMsg("Unexpected HTTP response code: " + rspStatus);
+					}
+				});
+			} else {
+				updateMsg("Please enter a email address");
+			}
+		}
+
+		function checkotp() {
+			clearMsg();
+			var otp = document.getElementById("otp").value;
+			var trxnid = document.getElementById("trxnid").textContent;
+			var email = document.getElementById("email").value;
+			if (otp != null && otp.length > 0 && trxnid != null && trxnid.length > 0) {
+				$.ajax({
+					type: "POST",
+					url: baseURL + '/checkotp',
+					data: JSON.stringify({"otp": otp, "trxnid": trxnid, "email": email}),
 					beforeSend: (request) => {
     					request.setRequestHeader("Content-type", "application/json");
     					request.setRequestHeader("Accept", "application/json");
@@ -99,13 +132,13 @@
 					}
 				});
 			} else {
-				updateMsg("Please enter a username and password");
+				updateMsg("Please enter OTP code");
 			}
 		}
 
-		function doLoginOIDC() {
+	/*	function doLoginOIDC() {
 			window.location = baseURL + "/loginoidc";
-		}
+		} */
 
 		function doLogout() {
 			clearMsg();
@@ -458,7 +491,7 @@
 			if (options.authenticatorSelection.requireResidentKey) {
 				options["extensions"] = { "credProtect": 2 };
 			}
-					
+			console.log("options: ", options);		
 			sendAttestationOptionsRequest(options);	
 		}
 
@@ -617,7 +650,7 @@
 		}
 
 		function testAuthentication(i) {			
-			//alert('Testing login with reg: ' + userData.credentials[i].nickname);
+			alert('Testing login with reg: ' + userData.credentials[i].attributes.nickname);
 			clearMsg();
 
 			// prepare an options call based on the selected registration
@@ -630,6 +663,8 @@
 		}
 
 		function sendAssertionOptionsRequest(options, i, performLogin) {
+			// options = {username: ''}, i = -1, performLogin = true
+			console.log("options = ",options, i, performLogin);
 			$.ajax({ 
 				type:"POST",
 				url: baseURL + '/assertion/options',
@@ -647,7 +682,7 @@
 
 		function processAssertionOptionsResponse(serverOptions, textStatus, jqXHR, i, performLogin) {
 			var rspStatus = jqXHR.status;
-			//console.log("rspStatus: " + rspStatus);
+			console.log("rspStatus: " + rspStatus);
 			if (rspStatus == 200 && serverOptions["status"] && serverOptions.status == "ok") {
 				// all ok - let's invoke the WebAuthn API to authenticate
 				console.log("Received assertion options: " + JSON.stringify(serverOptions));
@@ -783,14 +818,15 @@
 </head>
 <body onload="onLoad()">
 	<h2>FIDO2 Demo Relying Party</h2>
+	<div id="trxnid" style="display: none;"></div>
 	<div id="loginDiv" style="display:none">
 		<table border="0">
-			<tr><td>Username:</td><td><input id="username" type="text" size="20" /></td></tr>
-			<tr><td>Password:</td><td><input id="password" type="password" size="20" /></td></tr>
-			<tr><td colspan="2"><input type="button" value="Username/Password Login" onclick="doLogin()" /></td></tr>
-			<tr />
-			<tr><td colspan="2"><input type="button" value="OIDC Login" onclick="doLoginOIDC()" /></td></tr>
-			<tr />
+			<tr><td>Email Address:</td><td><input id="email" type="text" size="20" /></td></tr>
+			<tr><td colspan="2"><input type="button" value="Get Code" onclick="sendotp()" /></td></tr>
+		</table>
+		<table border="0">
+			<tr><td>OTP Code</td><td colspan="2"><div id="otp-correlation" style="display: none;"></div></td><td><input id="otp" type="text" size="20" /></td></tr>
+			<tr><td colspan="2"><input type="button" value="Check Code" onclick="checkotp()" /></td></tr>
 		</table>
 		<br />
 		<input type="button" value="FIDO2 Usernameless Login" onclick="doUsernamelessLogin()" />
